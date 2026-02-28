@@ -243,6 +243,13 @@ go test ./...           # run all tests
 bash scripts/check-local.sh   # run full quality gate
 ```
 
+## Inspiration
+
+This project was inspired by similar tools for managing Claude CLI sessions:
+
+- [claude-chats-delete](https://github.com/ataleckij/claude-chats-delete) — Delete Claude AI chat sessions
+- [claude-session-viewer](https://github.com/jtklinger/claude-session-viewer) — Browse and manage Claude session data
+
 ## License
 
 [MIT](LICENSE) © Salman Abdurrahman
