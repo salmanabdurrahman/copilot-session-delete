@@ -1,0 +1,96 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: copilot-session-delete
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: copilot-session-delete
+    main: ./cmd/copilot-session-delete
+    binary: copilot-session-delete
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "arm64" }}arm64
+      {{- else }}{{ .Arch }}{{ end }}
+    files:
+      - README.md
+      - LICENSE
+      - CONTRIBUTING.md
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+# GitHub generates changelog automatically from merged PRs and their labels.
+# No conventional-commit format required — any PR title works.
+changelog:
+  use: github-native
+
+release:
+  github:
+    owner: salmanabdurrahman
+    name: copilot-session-delete
+  draft: false
+  prerelease: auto
+  name_template: "{{.ProjectName}} {{.Tag}}"
+  header: |
+    ## Install
+
+    **macOS (Apple Silicon)**
+    ```bash
+    curl -L https://github.com/salmanabdurrahman/copilot-session-delete/releases/download/{{.Tag}}/copilot-session-delete_Darwin_arm64.tar.gz | tar xz
+    sudo mv copilot-session-delete /usr/local/bin/
+    ```
+
+    **macOS (Intel)**
+    ```bash
+    curl -L https://github.com/salmanabdurrahman/copilot-session-delete/releases/download/{{.Tag}}/copilot-session-delete_Darwin_x86_64.tar.gz | tar xz
+    sudo mv copilot-session-delete /usr/local/bin/
+    ```
+
+    **Linux (amd64)**
+    ```bash
+    curl -L https://github.com/salmanabdurrahman/copilot-session-delete/releases/download/{{.Tag}}/copilot-session-delete_Linux_x86_64.tar.gz | tar xz
+    sudo mv copilot-session-delete /usr/local/bin/
+    ```
+
+    **go install**
+    ```bash
+    go install github.com/salmanabdurrahman/copilot-session-delete/cmd/copilot-session-delete@{{.Tag}}
+    ```
+  footer: |
+    ## Verify checksums
+
+    ```bash
+    sha256sum --check checksums.txt
+    ```
+
+    **Full Changelog**: https://github.com/salmanabdurrahman/copilot-session-delete/compare/{{.PreviousTag}}...{{.Tag}}

@@ -1,0 +1,97 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test with race detector
+        run: go test -race ./...
+
+  release:
+    name: GoReleaser
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history is required for changelog generation between tags.
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-changelog:
+    name: Update CHANGELOG.md
+    needs: release
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Fetch main so we can commit back to it.
+          ref: main
+          fetch-depth: 0
+
+      - name: Fetch release notes and prepend to CHANGELOG.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          DATE=$(date -u +%Y-%m-%d)
+
+          # Fetch the body of the just-published release.
+          NOTES=$(gh release view "$TAG" --json body -q .body)
+
+          # Build the new entry.
+          {
+            echo "## [$TAG] — $DATE"
+            echo ""
+            echo "$NOTES"
+            echo ""
+          } > /tmp/new_entry.md
+
+          # Prepend the new entry after the CHANGELOG_ENTRIES marker.
+          sed -i "s|<!-- CHANGELOG_ENTRIES -->|<!-- CHANGELOG_ENTRIES -->\n|" CHANGELOG.md
+          sed -i "/<!-- CHANGELOG_ENTRIES -->/r /tmp/new_entry.md" CHANGELOG.md
+
+      - name: Commit and push CHANGELOG.md
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git diff --cached --quiet || git commit -m "chore: update CHANGELOG for ${{ github.ref_name }} [skip ci]"
+          git push origin main
