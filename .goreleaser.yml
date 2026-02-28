@@ -22,7 +22,7 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X main.version={{.Version}}
+      - -X main.Version={{.Version}}
       - -X main.commit={{.Commit}}
       - -X main.date={{.Date}}
 
@@ -64,22 +64,32 @@ release:
   header: |
     ## Install
 
-    **macOS (Apple Silicon)**
+    **Quick install (recommended)**
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/salmanabdurrahman/copilot-session-delete/main/scripts/install.sh | bash
+    ```
+
+    **Manual install**
+
+    macOS (Apple Silicon):
     ```bash
     curl -L https://github.com/salmanabdurrahman/copilot-session-delete/releases/download/{{.Tag}}/copilot-session-delete_Darwin_arm64.tar.gz | tar xz
-    sudo mv copilot-session-delete /usr/local/bin/
+    mkdir -p ~/.local/bin && mv copilot-session-delete ~/.local/bin/
+    export PATH="$HOME/.local/bin:$PATH"
     ```
 
-    **macOS (Intel)**
+    macOS (Intel):
     ```bash
     curl -L https://github.com/salmanabdurrahman/copilot-session-delete/releases/download/{{.Tag}}/copilot-session-delete_Darwin_x86_64.tar.gz | tar xz
-    sudo mv copilot-session-delete /usr/local/bin/
+    mkdir -p ~/.local/bin && mv copilot-session-delete ~/.local/bin/
+    export PATH="$HOME/.local/bin:$PATH"
     ```
 
-    **Linux (amd64)**
+    Linux (amd64):
     ```bash
     curl -L https://github.com/salmanabdurrahman/copilot-session-delete/releases/download/{{.Tag}}/copilot-session-delete_Linux_x86_64.tar.gz | tar xz
-    sudo mv copilot-session-delete /usr/local/bin/
+    mkdir -p ~/.local/bin && mv copilot-session-delete ~/.local/bin/
+    export PATH="$HOME/.local/bin:$PATH"
     ```
 
     **go install**

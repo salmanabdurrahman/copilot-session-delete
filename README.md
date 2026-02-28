@@ -55,40 +55,58 @@ Copilot CLI stores its chat sessions locally under `~/.copilot/session-state/` (
 
 ## Installation
 
-### Pre-built binaries (recommended)
+### Quick install (recommended)
 
-Download the latest release for your platform from the [Releases page](https://github.com/salmanabdurrahman/copilot-session-delete/releases).
+Run this one-liner to install the latest version:
 
 ```bash
-# macOS (Apple Silicon)
-curl -L https://github.com/salmanabdurrahman/copilot-session-delete/releases/latest/download/copilot-session-delete_Darwin_arm64.tar.gz | tar xz
-sudo mv copilot-session-delete /usr/local/bin/
-
-# macOS (Intel)
-curl -L https://github.com/salmanabdurrahman/copilot-session-delete/releases/latest/download/copilot-session-delete_Darwin_x86_64.tar.gz | tar xz
-sudo mv copilot-session-delete /usr/local/bin/
-
-# Linux (amd64)
-curl -L https://github.com/salmanabdurrahman/copilot-session-delete/releases/latest/download/copilot-session-delete_Linux_x86_64.tar.gz | tar xz
-sudo mv copilot-session-delete /usr/local/bin/
+curl -fsSL https://raw.githubusercontent.com/salmanabdurrahman/copilot-session-delete/main/scripts/install.sh | bash
 ```
 
-Verify checksums against the `checksums.txt` file published with each release.
+The script will:
+- Detect your OS and architecture automatically
+- Download the latest release from GitHub
+- Verify SHA256 checksums
+- Install to `~/.local/bin` (no sudo required)
+- Guide you to add it to PATH if needed
+
+Supports: Linux and macOS (x86_64, arm64)
+
+### Manual installation
+
+Download the latest release for your platform from the [Releases page](https://github.com/salmanabdurrahman/copilot-session-delete/releases), extract the archive, and move the binary to a directory on your PATH:
+
+```bash
+# Example for macOS (Apple Silicon)
+curl -L https://github.com/salmanabdurrahman/copilot-session-delete/releases/latest/download/copilot-session-delete_Darwin_arm64.tar.gz | tar xz
+mkdir -p ~/.local/bin
+mv copilot-session-delete ~/.local/bin/
+export PATH="$HOME/.local/bin:$PATH"
+```
 
 ### Build from source
 
-Requires **Go 1.21+**.
+Requires **Go 1.25+**.
 
 ```bash
 git clone https://github.com/salmanabdurrahman/copilot-session-delete.git
 cd copilot-session-delete
 go build -o copilot-session-delete ./cmd/copilot-session-delete
+mkdir -p ~/.local/bin
+mv copilot-session-delete ~/.local/bin/
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 ### `go install`
 
 ```bash
 go install github.com/salmanabdurrahman/copilot-session-delete/cmd/copilot-session-delete@latest
+```
+
+The binary will be installed to `$GOPATH/bin`. Make sure it's in your PATH:
+
+```bash
+export PATH="$GOPATH/bin:$PATH"
 ```
 
 ## Usage
@@ -215,6 +233,13 @@ copilot-session-delete
 
 ## Troubleshooting
 
+**`command not found: copilot-session-delete`**  
+The binary is not in your PATH. Add `~/.local/bin` to your PATH:
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+Add this line to your `~/.bashrc` or `~/.zshrc` to make it permanent.
+
 **`could not determine session directory`**  
 Copilot CLI may not have created the directory yet, or the `HOME` / `USERPROFILE` environment variable is unset. Use `--session-dir` to point to the directory manually.
 
@@ -223,6 +248,13 @@ The session ID you provided does not match any entry in the scanned directory. R
 
 **`safety check failed for session <id>`**  
 The resolved path of the session falls outside the declared session-state root. This may indicate a symlink or a manually crafted path. The deletion is rejected as a safety measure.
+
+**`copilot-session-delete --version` shows `dev`**  
+This is expected for source builds. Release binaries embed the real version tag via build flags.  
+To set it manually:
+```bash
+go build -ldflags "-X main.Version=v0.1.0" -o copilot-session-delete ./cmd/copilot-session-delete
+```
 
 **TUI shows blank screen on launch**  
 Ensure your terminal is at least 40 columns wide. The TUI requires a minimum width to render.
