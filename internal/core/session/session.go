@@ -2,7 +2,10 @@
 // discovering Copilot CLI sessions from the local session-state directory.
 package session
 
-import "time"
+import (
+	"path/filepath"
+	"time"
+)
 
 // Session represents a single Copilot CLI chat session discovered on disk.
 type Session struct {
@@ -32,7 +35,7 @@ type Session struct {
 	// Summary is a short human-readable title for the session.
 	Summary string
 
-	// EventCount is the number of lines in events.jsonl.
+	// EventCount is the number of valid JSON lines in events.jsonl.
 	// -1 indicates the file was not found or not readable.
 	EventCount int
 
@@ -43,4 +46,20 @@ type Session struct {
 	// MetadataErr holds any non-fatal error encountered while reading workspace.yaml.
 	// A session with MetadataErr is still displayed but marked with a warning indicator.
 	MetadataErr error
+}
+
+// Label returns a short human-readable identifier for the session suitable
+// for display in table rows and confirmation dialogs.
+// Priority: Repository > basename(CWD) > session ID prefix.
+func (s Session) Label() string {
+	if s.Repository != "" {
+		return s.Repository
+	}
+	if s.CWD != "" {
+		return filepath.Base(s.CWD)
+	}
+	if len(s.ID) >= 8 {
+		return s.ID[:8] + "…"
+	}
+	return s.ID
 }

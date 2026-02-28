@@ -78,13 +78,7 @@ func printJSON(w io.Writer, sessions []session.Session) error {
 }
 
 func sessionLabel(s session.Session) string {
-	if s.Repository != "" {
-		return s.Repository
-	}
-	if s.CWD != "" {
-		return s.CWD
-	}
-	return "—"
+	return s.Label()
 }
 
 func formatTime(t time.Time) string {
@@ -113,4 +107,24 @@ func truncate(s string, max int) string {
 		return s
 	}
 	return s[:max-1] + "…"
+}
+
+// FormatSize returns a human-readable approximation of a byte count.
+// Examples: "~2.1 MB", "~512 KB", "~900 B".
+func FormatSize(bytes int64) string {
+	const (
+		KB = 1024
+		MB = 1024 * KB
+		GB = 1024 * MB
+	)
+	switch {
+	case bytes >= GB:
+		return fmt.Sprintf("~%.1f GB", float64(bytes)/float64(GB))
+	case bytes >= MB:
+		return fmt.Sprintf("~%.1f MB", float64(bytes)/float64(MB))
+	case bytes >= KB:
+		return fmt.Sprintf("~%.1f KB", float64(bytes)/float64(KB))
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
 }

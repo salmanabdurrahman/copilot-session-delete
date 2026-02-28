@@ -2,6 +2,7 @@ package session
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -71,8 +72,9 @@ func enrichFromWorkspace(s *Session) error {
 	return nil
 }
 
-// countEvents counts the number of lines in events.jsonl.
-// Returns -1 if the file cannot be read.
+// countEvents counts the number of valid JSON lines in events.jsonl.
+// Lines that are empty or contain invalid JSON are skipped.
+// Returns -1 if the file cannot be opened.
 func countEvents(path string) int {
 	f, err := os.Open(path)
 	if err != nil {
@@ -82,8 +84,11 @@ func countEvents(path string) int {
 
 	count := 0
 	sc := bufio.NewScanner(f)
+	// Increase buffer capacity for sessions with large event payloads.
+	sc.Buffer(make([]byte, 64*1024), 1024*1024)
 	for sc.Scan() {
-		if len(sc.Bytes()) > 0 {
+		line := sc.Bytes()
+		if len(line) > 0 && json.Valid(line) {
 			count++
 		}
 	}

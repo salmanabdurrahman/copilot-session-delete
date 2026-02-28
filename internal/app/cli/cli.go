@@ -134,17 +134,10 @@ func RunDelete(ctx context.Context, opts DeleteOptions) error {
 	return fmt.Errorf("partial failure: %d session(s) could not be deleted", failed)
 }
 
-// loadSessions scans sessionDir and enriches each session with metadata.
+// loadSessions scans sessionDir, enriches each session with metadata, and
+// returns them sorted by UpdatedAt descending (newest first).
 func loadSessions(ctx context.Context, sessionDir string) ([]session.Session, error) {
-	scanner := session.NewScanner(sessionDir)
-	sessions, err := scanner.Scan(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for i := range sessions {
-		session.EnrichMetadata(&sessions[i])
-	}
-	return sessions, nil
+	return session.ScanAndEnrich(ctx, sessionDir)
 }
 
 // resolveTargets filters sessions to the ones the user wants to delete.
