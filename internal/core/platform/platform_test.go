@@ -9,7 +9,8 @@ import (
 )
 
 func TestSessionDir_WithOverride(t *testing.T) {
-	want := "/tmp/my-custom-sessions"
+	// Use a real directory so filepath.Abs resolves consistently on all platforms.
+	want := t.TempDir()
 	t.Setenv(platform.EnvOverride, want)
 
 	got, err := platform.SessionDir()
