@@ -1,0 +1,127 @@
+# =============================================================================
+# copilot-session-delete .gitignore
+# =============================================================================
+
+# ── Go ────────────────────────────────────────────────────────────────────────
+
+# Compiled binary
+/copilot-session-delete
+/copilot-session-delete.exe
+/bin/
+/dist/
+
+# Test & build artifacts
+*.test
+*.out
+/build/
+
+# Coverage & profiling
+coverage.txt
+coverage.html
+coverage.out
+*.coverprofile
+*.cpuprofile
+*.memprofile
+*.pprof
+
+# Go workspace (per-developer, not project-wide)
+go.work
+go.work.sum
+
+# Vendored dependencies (uncomment if you intentionally vendor)
+# /vendor/
+
+# ── Project-specific ─────────────────────────────────────────────────────────
+
+# Never commit real/personal session data
+test/fixtures/real-session-state/
+test/fixtures/personal/
+
+# Auto-generated golden test files (hand-crafted ones live in testdata/)
+testdata/generated/
+*.golden.tmp
+
+# Demo recordings — keep source .tape/.cast, exclude generated media
+*.gif
+*.mp4
+*.webm
+/demos/
+
+# GoReleaser artifacts & release staging
+/release/
+
+# Scratch / local notes
+scratch/
+TODO.local.md
+
+# ── Tooling & CI ──────────────────────────────────────────────────────────────
+
+# Lint cache
+.golangci-lint/
+.cache/
+
+# Delve debugger binary
+__debug_bin*
+
+# Air live-reload temp dir
+tmp/
+
+# GitHub Actions local runner (act)
+.act/
+
+# goreleaser local override
+.goreleaser.local.y*ml
+
+# ── Environment & Secrets ─────────────────────────────────────────────────────
+
+.env
+.env.*
+!.env.example
+*.secret
+*.pem
+*.key
+.envrc
+.direnv/
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ── Editors & IDEs ────────────────────────────────────────────────────────────
+
+# VS Code (allow shared settings)
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# JetBrains (GoLand, IntelliJ)
+.idea/
+*.iml
+
+# Vim / Neovim
+*.swp
+*.swo
+*~
+Session.vim
+
+# Emacs
+\#*\#
+.\#*
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+
+*.log
+logs/
+
