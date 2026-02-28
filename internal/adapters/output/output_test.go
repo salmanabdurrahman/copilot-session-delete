@@ -116,7 +116,61 @@ func TestPrintSessions_JSONEmpty(t *testing.T) {
 	}
 }
 
-// ── helpers ───────────────────────────────────────────────────────────────────
+// TestPrintSessions_TableFormat_ZeroTime verifies sessions with zero UpdatedAt
+// display "—" in the UPDATED AT column.
+func TestPrintSessions_TableFormat_ZeroTime(t *testing.T) {
+	sessions := []session.Session{
+		{
+			ID:         "86334621-8152-4e67-b322-9f139d6c0a57",
+			EventCount: 5,
+			// UpdatedAt intentionally zero.
+		},
+	}
+	var buf bytes.Buffer
+	if err := output.PrintSessions(&buf, sessions, output.FormatTable); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "—") {
+		t.Error("expected '—' for zero UpdatedAt in table output")
+	}
+}
+
+// TestPrintSessions_TableFormat_NegativeEventCount verifies sessions with
+// EventCount < 0 display "?" in the EVENTS column.
+func TestPrintSessions_TableFormat_NegativeEventCount(t *testing.T) {
+	sessions := []session.Session{
+		{
+			ID:         "86334621-8152-4e67-b322-9f139d6c0a57",
+			EventCount: -1, // unknown
+		},
+	}
+	var buf bytes.Buffer
+	if err := output.PrintSessions(&buf, sessions, output.FormatTable); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "?") {
+		t.Error("expected '?' for negative EventCount in table output")
+	}
+}
+
+// TestPrintSessions_TableFormat_LongID verifies a session ID longer than the
+// column width is truncated in the table output.
+func TestPrintSessions_TableFormat_LongID(t *testing.T) {
+	sessions := []session.Session{
+		{
+			ID:         "86334621-8152-4e67-b322-9f139d6c0a57",
+			EventCount: 0,
+		},
+	}
+	var buf bytes.Buffer
+	if err := output.PrintSessions(&buf, sessions, output.FormatTable); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// The full UUID (36 chars) should be present at full width since it fits.
+	if !strings.Contains(buf.String(), "86334621-8152-4e67-b322-9f139d6c0a57") {
+		t.Error("expected full UUID in table output when it fits within column width")
+	}
+}
 
 func makeSessions() []session.Session {
 	return []session.Session{

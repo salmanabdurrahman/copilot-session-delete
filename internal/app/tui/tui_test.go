@@ -626,6 +626,153 @@ func TestView_ConfirmModal_DryRun(t *testing.T) {
 	}
 }
 
+// TestView_DetailView verifies the detail panel renders session fields correctly.
+func TestView_DetailView(t *testing.T) {
+	m := modelWithSessions()
+	m.view = viewDetail
+	m.detailIdx = 0
+	out := m.View()
+	if !strings.Contains(out, "Session Detail") {
+		t.Errorf("expected 'Session Detail' header in detail view, got:\n%s", out)
+	}
+	if !strings.Contains(out, "86334621") {
+		t.Errorf("expected first session ID in detail view, got:\n%s", out)
+	}
+}
+
+// TestView_DetailView_OutOfBounds verifies an out-of-bounds detailIdx falls back
+// to the list view.
+func TestView_DetailView_OutOfBounds(t *testing.T) {
+	m := modelWithSessions()
+	m.view = viewDetail
+	m.detailIdx = 999 // beyond filtered length
+	out := m.View()
+	// Should fall back to list view (header present, no "Session Detail").
+	if strings.Contains(out, "Session Detail") {
+		t.Error("expected fallback to list view for out-of-bounds detailIdx")
+	}
+}
+
+// TestUpdate_VimKeys verifies 'k' and 'j' navigate the cursor up and down.
+func TestUpdate_VimKeys(t *testing.T) {
+	m := modelWithSessions()
+
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	if m2.(model).cursor != 1 {
+		t.Errorf("expected cursor 1 after 'j', got %d", m2.(model).cursor)
+	}
+
+	m3, _ := m2.(model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	if m3.(model).cursor != 0 {
+		t.Errorf("expected cursor 0 after 'k', got %d", m3.(model).cursor)
+	}
+}
+
+// TestUpdate_GotoFirst verifies 'g' jumps the cursor to the first session.
+func TestUpdate_GotoFirst(t *testing.T) {
+	m := modelWithSessions()
+	m.cursor = 1
+
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	if m2.(model).cursor != 0 {
+		t.Errorf("expected cursor 0 after 'g', got %d", m2.(model).cursor)
+	}
+}
+
+// TestUpdate_GotoLast verifies 'G' jumps the cursor to the last session.
+func TestUpdate_GotoLast(t *testing.T) {
+	m := modelWithSessions()
+	m.cursor = 0
+
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
+	got := m2.(model)
+	want := len(got.filtered) - 1
+	if got.cursor != want {
+		t.Errorf("expected cursor %d after 'G', got %d", want, got.cursor)
+	}
+}
+
+// TestUpdate_RefreshKey verifies 'r' resets the model to loading state and
+// returns a non-nil loadSessionsCmd.
+func TestUpdate_RefreshKey(t *testing.T) {
+	m := modelWithSessions()
+	m.statusMsg = "some previous status"
+
+	m2, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	got := m2.(model)
+
+	if !got.loading {
+		t.Error("expected loading=true after 'r'")
+	}
+	if got.sessions != nil {
+		t.Error("expected sessions cleared after 'r'")
+	}
+	if got.statusMsg != "" {
+		t.Errorf("expected statusMsg cleared after 'r', got %q", got.statusMsg)
+	}
+	if cmd == nil {
+		t.Error("expected non-nil loadSessionsCmd after 'r'")
+	}
+}
+
+// TestUpdate_SearchEnterDismisses verifies pressing 'enter' while search is active
+// commits the query and deactivates the search input.
+func TestUpdate_SearchEnterDismisses(t *testing.T) {
+	m := modelWithSessions()
+	// Activate search.
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	// Press enter to commit.
+	m3, _ := m2.(model).Update(tea.KeyMsg{Type: tea.KeyEnter})
+	got := m3.(model)
+	if got.searchActive {
+		t.Error("expected searchActive=false after enter in search mode")
+	}
+}
+
+// TestView_LoadError verifies the error message is shown when a load error occurred.
+func TestView_LoadError(t *testing.T) {
+	m := initialModel("/fake/dir", false)
+	m.width = 100
+	m.height = 30
+	m.loading = false
+	m.loadErr = fmt.Errorf("permission denied")
+	out := m.View()
+	if !strings.Contains(out, "permission denied") {
+		t.Errorf("expected load error message in view, got:\n%s", out)
+	}
+}
+
+// TestView_FilteredEmpty verifies the "no match" message is shown when the filter
+// matches no sessions.
+func TestView_FilteredEmpty(t *testing.T) {
+	m := modelWithSessions()
+	m.filtered = nil // filter produced no results
+	out := m.View()
+	if !strings.Contains(out, "No sessions match") {
+		t.Errorf("expected no-match message in view, got:\n%s", out)
+	}
+}
+
+// TestView_ColHeaders_NoEvents verifies the EVENTS column is hidden at medium width.
+func TestView_ColHeaders_NoEvents(t *testing.T) {
+	m := modelWithSessions()
+	m.width = 70 // colsNoEvents range
+	out := m.View()
+	if strings.Contains(out, "EVENTS") {
+		t.Error("expected EVENTS column to be hidden at width 70")
+	}
+}
+
+// TestView_ColHeaders_Mini verifies only ID and time columns appear at narrow width.
+func TestView_ColHeaders_Mini(t *testing.T) {
+	m := modelWithSessions()
+	m.width = 50 // colsMini range
+	out := m.View()
+	if strings.Contains(out, "CWD/REPO") {
+		t.Error("expected CWD/REPO column to be hidden at width 50")
+	}
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 // fixtureSessions returns two minimal sessions for testing.

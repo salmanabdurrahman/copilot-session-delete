@@ -128,3 +128,44 @@ func TestScanner_RootIsFile(t *testing.T) {
 		t.Fatal("expected error when root is a file, got nil")
 	}
 }
+
+// ─── Benchmarks ───────────────────────────────────────────────────────────────
+
+// BenchmarkScan measures the scanner's throughput against a directory of
+// 20 synthetic sessions (no metadata reads).
+func BenchmarkScan(b *testing.B) {
+	root := b.TempDir()
+	ids := []string{
+		"86334621-8152-4e67-b322-9f139d6c0a57",
+		"c0c723f4-08d2-4257-9b30-5d2fd728dc45",
+		"d1e2f3a4-0000-4000-a000-000000000001",
+		"d1e2f3a4-0000-4000-a000-000000000002",
+		"d1e2f3a4-0000-4000-a000-000000000003",
+		"d1e2f3a4-0000-4000-a000-000000000004",
+		"d1e2f3a4-0000-4000-a000-000000000005",
+		"d1e2f3a4-0000-4000-a000-000000000006",
+		"d1e2f3a4-0000-4000-a000-000000000007",
+		"d1e2f3a4-0000-4000-a000-000000000008",
+		"d1e2f3a4-0000-4000-a000-000000000009",
+		"d1e2f3a4-0000-4000-a000-00000000000a",
+		"d1e2f3a4-0000-4000-a000-00000000000b",
+		"d1e2f3a4-0000-4000-a000-00000000000c",
+		"d1e2f3a4-0000-4000-a000-00000000000d",
+		"d1e2f3a4-0000-4000-a000-00000000000e",
+		"d1e2f3a4-0000-4000-a000-00000000000f",
+		"d1e2f3a4-0000-4000-b000-000000000001",
+		"d1e2f3a4-0000-4000-b000-000000000002",
+		"d1e2f3a4-0000-4000-b000-000000000003",
+	}
+	for _, id := range ids {
+		if err := os.Mkdir(filepath.Join(root, id), 0o755); err != nil {
+			b.Fatalf("setup: %v", err)
+		}
+	}
+	sc := session.NewScanner(root)
+	ctx := context.Background()
+	b.ResetTimer()
+	for range b.N {
+		_, _ = sc.Scan(ctx)
+	}
+}

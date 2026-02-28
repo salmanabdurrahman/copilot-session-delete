@@ -217,3 +217,40 @@ func TestSession_Label(t *testing.T) {
 		})
 	}
 }
+
+// ─── Benchmarks ───────────────────────────────────────────────────────────────
+
+// BenchmarkEnrichMetadata measures metadata parsing throughput for a session
+// with a full workspace.yaml and a small events.jsonl.
+func BenchmarkEnrichMetadata(b *testing.B) {
+	dir := b.TempDir()
+	id := "86334621-8152-4e67-b322-9f139d6c0a57"
+	sessionDir := filepath.Join(dir, id)
+	if err := os.MkdirAll(sessionDir, 0o755); err != nil {
+		b.Fatalf("setup: %v", err)
+	}
+
+	workspace := "id: " + id + "\n" +
+		"cwd: /home/user/project\n" +
+		"repository: github/copilot-cli\n" +
+		"branch: main\n" +
+		"summary: Benchmark session\n" +
+		"created_at: \"2026-02-28T09:00:00Z\"\n" +
+		"updated_at: \"2026-02-28T10:00:00Z\"\n"
+	if err := os.WriteFile(filepath.Join(sessionDir, "workspace.yaml"), []byte(workspace), 0o644); err != nil {
+		b.Fatalf("setup workspace: %v", err)
+	}
+
+	events := `{"type":"user","text":"hello"}` + "\n" +
+		`{"type":"assistant","text":"world"}` + "\n"
+	if err := os.WriteFile(filepath.Join(sessionDir, "events.jsonl"), []byte(events), 0o644); err != nil {
+		b.Fatalf("setup events: %v", err)
+	}
+
+	s := session.Session{ID: id, RootPath: sessionDir}
+	b.ResetTimer()
+	for range b.N {
+		ss := s
+		session.EnrichMetadata(&ss)
+	}
+}
