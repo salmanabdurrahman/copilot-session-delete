@@ -18,6 +18,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.RELEASE_TOKEN }}
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -36,6 +39,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          token: ${{ secrets.RELEASE_TOKEN }}
           # Full history is required for changelog generation between tags.
           fetch-depth: 0
 
@@ -62,13 +66,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          token: ${{ secrets.RELEASE_TOKEN }}
           # Fetch main so we can commit back to it.
           ref: main
           fetch-depth: 0
 
       - name: Fetch release notes and prepend to CHANGELOG.md
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           TAG="${{ github.ref_name }}"
           DATE=$(date -u +%Y-%m-%d)
