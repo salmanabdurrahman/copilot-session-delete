@@ -1,4 +1,4 @@
-// Tests for the Bubble Tea TUI model (Phase 3).
+// Tests for the Bubble Tea TUI model.
 // Uses internal package access so unexported messages and view states are reachable.
 package tui
 
@@ -9,12 +9,13 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/salmanabdurrahman/copilot-session-delete/internal/core/deletion"
 	"github.com/salmanabdurrahman/copilot-session-delete/internal/core/session"
 )
 
 // TestInitialModel verifies the initial model has sensible default values.
 func TestInitialModel(t *testing.T) {
-	m := initialModel("/fake/dir")
+	m := initialModel("/fake/dir", false)
 	if m.sessionDir != "/fake/dir" {
 		t.Errorf("expected sessionDir %q, got %q", "/fake/dir", m.sessionDir)
 	}
@@ -34,7 +35,7 @@ func TestInitialModel(t *testing.T) {
 
 // TestUpdate_WindowSize verifies width, height, and listH are set on WindowSizeMsg.
 func TestUpdate_WindowSize(t *testing.T) {
-	m := initialModel("/fake/dir")
+	m := initialModel("/fake/dir", false)
 	m2, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	got := m2.(model)
 	if got.width != 120 || got.height != 40 {
@@ -47,7 +48,7 @@ func TestUpdate_WindowSize(t *testing.T) {
 
 // TestUpdate_SessionsLoaded verifies sessions and filtered are populated on success.
 func TestUpdate_SessionsLoaded(t *testing.T) {
-	m := initialModel("/fake/dir")
+	m := initialModel("/fake/dir", false)
 	sessions := fixtureSessions()
 	m2, _ := m.Update(sessionsLoadedMsg{sessions: sessions})
 	got := m2.(model)
@@ -68,7 +69,7 @@ func TestUpdate_SessionsLoaded(t *testing.T) {
 
 // TestUpdate_SessionsLoadError verifies loadErr is set and loading cleared on error.
 func TestUpdate_SessionsLoadError(t *testing.T) {
-	m := initialModel("/fake/dir")
+	m := initialModel("/fake/dir", false)
 	m2, _ := m.Update(sessionsLoadedMsg{err: fmt.Errorf("permission denied")})
 	got := m2.(model)
 
@@ -319,7 +320,7 @@ func TestUpdate_CtrlCQuitsFromAnyView(t *testing.T) {
 
 // TestView_NarrowTerminal verifies the narrow-terminal message is shown at width < 40.
 func TestView_NarrowTerminal(t *testing.T) {
-	m := initialModel("/fake/dir")
+	m := initialModel("/fake/dir", false)
 	m.width = 30
 	m.height = 20
 	out := m.View()
@@ -330,7 +331,7 @@ func TestView_NarrowTerminal(t *testing.T) {
 
 // TestView_EmptyState verifies the empty state message is shown when no sessions exist.
 func TestView_EmptyState(t *testing.T) {
-	m := initialModel("/fake/dir")
+	m := initialModel("/fake/dir", false)
 	m.width = 100
 	m.height = 30
 	m.loading = false
@@ -344,7 +345,7 @@ func TestView_EmptyState(t *testing.T) {
 
 // TestView_LoadingState verifies the loading message is shown while loading.
 func TestView_LoadingState(t *testing.T) {
-	m := initialModel("/fake/dir")
+	m := initialModel("/fake/dir", false)
 	m.width = 100
 	m.height = 30
 	m.loading = true
@@ -411,6 +412,220 @@ func TestColMode(t *testing.T) {
 	}
 }
 
+// ─── Deletion wiring tests ──────────────────────────────────────────
+
+// TestUpdate_ConfirmYStartsDeletion verifies pressing 'y' in confirm switches to
+// the list view, sets deleting=true, and returns a non-nil async command.
+func TestUpdate_ConfirmYStartsDeletion(t *testing.T) {
+	m := modelWithSessions()
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	got, cmd := m2.(model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	result := got.(model)
+
+	if !result.deleting {
+		t.Error("expected deleting=true after confirm 'y'")
+	}
+	if result.view != viewList {
+		t.Errorf("expected view to return to viewList after confirm 'y', got %v", result.view)
+	}
+	if cmd == nil {
+		t.Error("expected non-nil delete cmd after confirm 'y'")
+	}
+}
+
+// TestUpdate_DeleteComplete_AllSuccess verifies that on full success all deleted sessions
+// are removed from the list and a success status message is shown.
+func TestUpdate_DeleteComplete_AllSuccess(t *testing.T) {
+	m := modelWithSessions()
+	sessions := m.sessions
+
+	m2, _ := m.Update(deleteCompleteMsg{
+		results: []deletion.Result{
+			{SessionID: sessions[0].ID, Success: true},
+			{SessionID: sessions[1].ID, Success: true},
+		},
+	})
+	got := m2.(model)
+
+	if got.deleting {
+		t.Error("expected deleting=false after deleteCompleteMsg")
+	}
+	if len(got.sessions) != 0 {
+		t.Errorf("expected 0 remaining sessions after full success, got %d", len(got.sessions))
+	}
+	if got.statusIsErr {
+		t.Error("expected no error status after full success")
+	}
+	if !strings.Contains(got.statusMsg, "2 session(s) deleted") {
+		t.Errorf("unexpected statusMsg: %q", got.statusMsg)
+	}
+}
+
+// TestUpdate_DeleteComplete_AllFailed verifies that on full failure sessions remain
+// in the list and an error status message is shown.
+func TestUpdate_DeleteComplete_AllFailed(t *testing.T) {
+	m := modelWithSessions()
+	sessions := m.sessions
+
+	m2, _ := m.Update(deleteCompleteMsg{
+		results: []deletion.Result{
+			{SessionID: sessions[0].ID, Success: false, Err: fmt.Errorf("permission denied")},
+			{SessionID: sessions[1].ID, Success: false, Err: fmt.Errorf("permission denied")},
+		},
+	})
+	got := m2.(model)
+
+	if len(got.sessions) != 2 {
+		t.Errorf("expected sessions to remain on full failure, got %d", len(got.sessions))
+	}
+	if !got.statusIsErr {
+		t.Error("expected statusIsErr=true after full failure")
+	}
+	if !strings.Contains(got.statusMsg, "All 2 deletion(s) failed") {
+		t.Errorf("unexpected statusMsg: %q", got.statusMsg)
+	}
+}
+
+// TestUpdate_DeleteComplete_PartialFailed verifies that on partial failure only
+// successfully deleted sessions are removed, with a warning status message.
+func TestUpdate_DeleteComplete_PartialFailed(t *testing.T) {
+	m := modelWithSessions()
+	sessions := m.sessions
+
+	m2, _ := m.Update(deleteCompleteMsg{
+		results: []deletion.Result{
+			{SessionID: sessions[0].ID, Success: true},
+			{SessionID: sessions[1].ID, Success: false, Err: fmt.Errorf("permission denied")},
+		},
+	})
+	got := m2.(model)
+
+	if len(got.sessions) != 1 {
+		t.Errorf("expected 1 remaining session after partial failure, got %d", len(got.sessions))
+	}
+	if got.sessions[0].ID != sessions[1].ID {
+		t.Errorf("expected failing session to remain, got %s", got.sessions[0].ID)
+	}
+	if !got.statusIsErr {
+		t.Error("expected statusIsErr=true after partial failure")
+	}
+	if !strings.Contains(got.statusMsg, "1 deleted") || !strings.Contains(got.statusMsg, "1 failed") {
+		t.Errorf("unexpected statusMsg: %q", got.statusMsg)
+	}
+}
+
+// TestUpdate_DeleteComplete_PlannerError verifies that a planner-level error in
+// deleteCompleteMsg is surfaced as an error status message.
+func TestUpdate_DeleteComplete_PlannerError(t *testing.T) {
+	m := modelWithSessions()
+	m.deleting = true
+
+	m2, _ := m.Update(deleteCompleteMsg{err: fmt.Errorf("safety check failed")})
+	got := m2.(model)
+
+	if got.deleting {
+		t.Error("expected deleting=false after error")
+	}
+	if !got.statusIsErr {
+		t.Error("expected statusIsErr=true after planner error")
+	}
+	if !strings.Contains(got.statusMsg, "safety check failed") {
+		t.Errorf("unexpected statusMsg: %q", got.statusMsg)
+	}
+}
+
+// TestUpdate_DeleteComplete_DryRun verifies that dry-run results do not remove
+// sessions from the list and show a [DRY-RUN] status message.
+func TestUpdate_DeleteComplete_DryRun(t *testing.T) {
+	m := modelWithSessions()
+	sessions := m.sessions
+
+	m2, _ := m.Update(deleteCompleteMsg{
+		results: []deletion.Result{
+			{SessionID: sessions[0].ID, Success: true, DryRun: true},
+			{SessionID: sessions[1].ID, Success: true, DryRun: true},
+		},
+	})
+	got := m2.(model)
+
+	if len(got.sessions) != 2 {
+		t.Errorf("expected sessions to remain after dry-run, got %d", len(got.sessions))
+	}
+	if got.statusIsErr {
+		t.Error("expected no error status after dry-run")
+	}
+	if !strings.Contains(got.statusMsg, "[DRY-RUN]") || !strings.Contains(got.statusMsg, "Would delete 2") {
+		t.Errorf("unexpected dry-run statusMsg: %q", got.statusMsg)
+	}
+}
+
+// TestUpdate_DryRunConfirmY verifies pressing 'y' in dry-run mode returns a
+// non-nil cmd (the executor is called with dryRun=true).
+func TestUpdate_DryRunConfirmY(t *testing.T) {
+	m := modelWithSessions()
+	m.dryRun = true
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	got, cmd := m2.(model).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	result := got.(model)
+
+	if !result.deleting {
+		t.Error("expected deleting=true after dry-run confirm 'y'")
+	}
+	if cmd == nil {
+		t.Error("expected non-nil cmd for dry-run deletion")
+	}
+}
+
+// TestUpdate_InputBlockedWhileDeleting verifies all key input is ignored when
+// a deletion is in progress.
+func TestUpdate_InputBlockedWhileDeleting(t *testing.T) {
+	m := modelWithSessions()
+	m.deleting = true
+	m.cursor = 0
+
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if m2.(model).cursor != 0 {
+		t.Error("expected cursor to not move while deleting")
+	}
+}
+
+// TestView_DeletingIndicator verifies the "Deleting…" indicator appears in the
+// list view while a deletion is in progress.
+func TestView_DeletingIndicator(t *testing.T) {
+	m := modelWithSessions()
+	m.deleting = true
+	out := m.View()
+	if !strings.Contains(out, "Deleting") {
+		t.Errorf("expected deleting indicator in view, got:\n%s", out)
+	}
+}
+
+// TestView_DryRunFooter verifies the footer shows [DRY-RUN] when dry-run is active.
+func TestView_DryRunFooter(t *testing.T) {
+	m := modelWithSessions()
+	m.dryRun = true
+	out := m.View()
+	if !strings.Contains(out, "[DRY-RUN]") {
+		t.Errorf("expected [DRY-RUN] in footer, got:\n%s", out)
+	}
+}
+
+// TestView_ConfirmModal_DryRun verifies the confirm modal renders dry-run specific
+// title and button text.
+func TestView_ConfirmModal_DryRun(t *testing.T) {
+	m := modelWithSessions()
+	m.dryRun = true
+	m2, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	got := m2.(model)
+	out := got.View()
+	if !strings.Contains(out, "[DRY-RUN]") {
+		t.Errorf("expected [DRY-RUN] badge in confirm modal, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Preview (no files removed)") {
+		t.Errorf("expected dry-run button text in confirm modal, got:\n%s", out)
+	}
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 // fixtureSessions returns two minimal sessions for testing.
@@ -433,7 +648,7 @@ func fixtureSessions() []session.Session {
 
 // modelWithSessions returns a ready-to-navigate model pre-loaded with two sessions.
 func modelWithSessions() model {
-	m := initialModel("/fake/dir")
+	m := initialModel("/fake/dir", false)
 	m.loading = false
 	m.width = 120
 	m.height = 40

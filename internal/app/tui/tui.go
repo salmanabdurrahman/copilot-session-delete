@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/salmanabdurrahman/copilot-session-delete/internal/adapters/output"
+	"github.com/salmanabdurrahman/copilot-session-delete/internal/core/deletion"
 	"github.com/salmanabdurrahman/copilot-session-delete/internal/core/session"
 )
 
@@ -44,12 +45,19 @@ type sessionsLoadedMsg struct {
 	err      error
 }
 
+// deleteCompleteMsg is delivered when the async deletion finishes.
+type deleteCompleteMsg struct {
+	results []deletion.Result
+	err     error // set only for planner/config-level errors (not per-session)
+}
+
 // ─── Model ───────────────────────────────────────────────────────────────────
 
 // model is the Bubble Tea root model for the TUI.
 type model struct {
 	// config
 	sessionDir string
+	dryRun     bool
 
 	// data
 	sessions []session.Session
@@ -76,6 +84,9 @@ type model struct {
 	// confirm modal — sessions targeted for deletion
 	deleteTargets []session.Session
 
+	// deletion in progress
+	deleting bool
+
 	// terminal dimensions
 	width  int
 	height int
@@ -85,13 +96,14 @@ type model struct {
 	statusIsErr bool
 }
 
-func initialModel(sessionDir string) model {
+func initialModel(sessionDir string, dryRun bool) model {
 	ti := textinput.New()
 	ti.Placeholder = "filter sessions…"
 	ti.CharLimit = 100
 	ti.Prompt = "/ "
 	return model{
 		sessionDir:  sessionDir,
+		dryRun:      dryRun,
 		selected:    make(map[string]bool),
 		searchInput: ti,
 		loading:     true,
@@ -101,8 +113,8 @@ func initialModel(sessionDir string) model {
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
 // Run starts the TUI application and blocks until the user exits.
-func Run(sessionDir string) error {
-	m := initialModel(sessionDir)
+func Run(sessionDir string, dryRun bool) error {
+	m := initialModel(sessionDir, dryRun)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err := p.Run()
 	return err
@@ -141,6 +153,62 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case deleteCompleteMsg:
+		m.deleting = false
+		if msg.err != nil {
+			m.statusMsg = fmt.Sprintf("✗ Deletion failed: %v", msg.err)
+			m.statusIsErr = true
+			return m, nil
+		}
+		var succeeded, failed int
+		deletedIDs := make(map[string]bool)
+		isDryRun := false
+		for _, r := range msg.results {
+			if r.DryRun {
+				isDryRun = true
+			}
+			if r.Success {
+				succeeded++
+				if !r.DryRun {
+					deletedIDs[r.SessionID] = true
+				}
+			} else {
+				failed++
+			}
+		}
+		// Remove successfully deleted sessions from the list.
+		if len(deletedIDs) > 0 {
+			remaining := m.sessions[:0]
+			for _, s := range m.sessions {
+				if !deletedIDs[s.ID] {
+					remaining = append(remaining, s)
+				}
+			}
+			m.sessions = remaining
+			for id := range deletedIDs {
+				delete(m.selected, id)
+			}
+			m.applyFilter()
+		}
+		// Compose status message.
+		if isDryRun {
+			m.statusMsg = fmt.Sprintf("[DRY-RUN] Would delete %d session(s).", succeeded)
+			m.statusIsErr = false
+		} else {
+			switch {
+			case failed == 0:
+				m.statusMsg = fmt.Sprintf("✓ %d session(s) deleted.", succeeded)
+				m.statusIsErr = false
+			case succeeded == 0:
+				m.statusMsg = fmt.Sprintf("✗ All %d deletion(s) failed.", failed)
+				m.statusIsErr = true
+			default:
+				m.statusMsg = fmt.Sprintf("⚠ %d deleted, %d failed.", succeeded, failed)
+				m.statusIsErr = true
+			}
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		// ctrl+c quits from any view.
 		if msg.String() == "ctrl+c" {
@@ -161,6 +229,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // ─── Key handlers ─────────────────────────────────────────────────────────────
 
 func (m model) updateList(msg tea.KeyMsg) (model, tea.Cmd) {
+	// Ignore all input while a deletion is in progress.
+	if m.deleting {
+		return m, nil
+	}
+
 	// Forward keystrokes to the textinput while search is active.
 	if m.searchActive {
 		switch msg.String() {
@@ -249,17 +322,32 @@ func (m model) updateDetail(msg tea.KeyMsg) (model, tea.Cmd) {
 func (m model) updateConfirm(msg tea.KeyMsg) (model, tea.Cmd) {
 	switch msg.String() {
 	case "y":
-		// Phase 3: confirm modal only — deletion is wired in Phase 4.
-		n := len(m.deleteTargets)
-		m.statusMsg = fmt.Sprintf("✓ %d session(s) queued for deletion (execution wired in Phase 4).", n)
-		m.statusIsErr = false
+		targets := m.deleteTargets
 		m.deleteTargets = nil
+		m.deleting = true
 		m.view = viewList
+		return m, runDeleteCmd(m.sessionDir, targets, m.dryRun)
 	case "n", "esc":
 		m.deleteTargets = nil
 		m.view = viewList
 	}
 	return m, nil
+}
+
+// runDeleteCmd runs the planner + executor asynchronously and returns a deleteCompleteMsg.
+func runDeleteCmd(root string, targets []session.Session, dryRun bool) tea.Cmd {
+	return func() tea.Msg {
+		planner := deletion.NewPlanner(root)
+		plans, err := planner.Build(targets)
+		if err != nil {
+			return deleteCompleteMsg{err: err}
+		}
+		var results []deletion.Result
+		for r := range deletion.NewExecutor(dryRun).Execute(context.Background(), plans) {
+			results = append(results, r)
+		}
+		return deleteCompleteMsg{results: results}
+	}
 }
 
 // ─── View dispatcher ──────────────────────────────────────────────────────────
@@ -330,8 +418,10 @@ func (m model) renderList() string {
 		}
 	}
 
-	// 5. Status message (success / error from last operation).
-	if m.statusMsg != "" {
+	// 5. Status message (success / error from last operation), or deletion progress.
+	if m.deleting {
+		b.WriteString(styleDim.Render("\n  Deleting…") + "\n")
+	} else if m.statusMsg != "" {
 		b.WriteByte('\n')
 		if m.statusIsErr {
 			b.WriteString(styleError.Render("  " + m.statusMsg))
@@ -343,6 +433,9 @@ func (m model) renderList() string {
 
 	// 6. Footer help bar.
 	footer := " [↑/↓] navigate  [/] search  [space] select  [a] all  [d] delete  [enter] detail  [r] refresh  [q] quit"
+	if m.dryRun {
+		footer = " [DRY-RUN]" + footer
+	}
 	b.WriteString(styleFooter.Render(trunc(footer, m.width)))
 
 	return b.String()
@@ -464,12 +557,17 @@ func (m model) renderConfirm() string {
 	n := len(m.deleteTargets)
 
 	var body strings.Builder
-	body.WriteString(styleWarning.Render(fmt.Sprintf("⚠  Delete %d session(s)?", n)) + "\n\n")
+
+	titleText := fmt.Sprintf("⚠  Delete %d session(s)?", n)
+	if m.dryRun {
+		titleText = fmt.Sprintf("[DRY-RUN] Preview %d session(s) to delete?", n)
+	}
+	body.WriteString(styleWarning.Render(titleText) + "\n\n")
 
 	const maxList = 5
 	for i, s := range m.deleteTargets {
 		if i >= maxList {
-			body.WriteString(fmt.Sprintf("  … dan %d lainnya\n", n-maxList))
+			body.WriteString(fmt.Sprintf("  … and %d more\n", n-maxList))
 			break
 		}
 		ev := "?"
@@ -488,8 +586,12 @@ func (m model) renderConfirm() string {
 		body.WriteString(fmt.Sprintf("\n  Total: %s will be removed.\n", output.FormatSize(totalBytes)))
 	}
 
-	body.WriteString(styleError.Render("\n  This action CANNOT be undone.") + "\n\n")
-	body.WriteString("  [y] Delete       [n / esc] Cancel\n")
+	if m.dryRun {
+		body.WriteString("\n  [y] Preview (no files removed)   [n / esc] Cancel\n")
+	} else {
+		body.WriteString(styleError.Render("\n  This action CANNOT be undone.") + "\n\n")
+		body.WriteString("  [y] Delete       [n / esc] Cancel\n")
+	}
 
 	modalWidth := min(m.width-8, 62)
 	modal := styleModalBorder.Width(modalWidth).Render(body.String())

@@ -32,6 +32,7 @@ func main() {
 
 func newRootCmd() *cobra.Command {
 	var sessionDir string
+	var dryRun bool
 
 	root := &cobra.Command{
 		Use:   "copilot-session-delete",
@@ -48,12 +49,14 @@ Running without a subcommand launches the interactive TUI.`,
 			if err != nil {
 				return err
 			}
-			return tui.Run(dir)
+			return tui.Run(dir, dryRun)
 		},
 	}
 
 	root.PersistentFlags().StringVar(&sessionDir, "session-dir", "",
 		"Override the session-state directory path (default: ~/.copilot/session-state)")
+	root.PersistentFlags().BoolVar(&dryRun, "dry-run", false,
+		"Preview deletes without removing any files")
 
 	root.AddCommand(
 		newListCmd(&sessionDir),
